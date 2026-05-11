@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lector de Hojas de Respuesta</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #f0f2f5;
+    --surface: #ffffff;
+    --surface2: #f7f8fa;
+    --border: #e2e5ea;
+    --accent: #2563eb;
+    --accent-light: #eff4ff;
+    --accent-dark: #1d4ed8;
+    --text: #111827;
+    --text-muted: #6b7280;
+    --success: #059669;
+    --success-bg: #ecfdf5;
+    --error: #dc2626;
+    --error-bg: #fef2f2;
+    --warning: #d97706;
+    --warning-bg: #fffbeb;
+    --pending: #9ca3af;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.05);
+    --shadow-lg: 0 4px 6px rgba(0,0,0,.05), 0 10px 40px rgba(0,0,0,.1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+
+  .app { max-width: 900px; margin: 0 auto; }
+
+  /* Header */
+  .header {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 28px;
+  }
+  .header-icon {
+    width: 48px; height: 48px; background: var(--accent);
+    border-radius: 14px; display: grid; place-items: center;
+    font-size: 22px; flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(37,99,235,.3);
+  }
+  .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
+  .header p { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 13px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .6px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  /* Config row */
+  .config-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .field { flex: 1; min-width: 180px; }
+  .field label { font-size: 12px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px; }
+  .field input[type=text], .field input[type=number], .field input[type=url] {
+    width: 100%; padding: 9px 12px;
+    border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+    font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text);
+    background: var(--surface2); transition: border-color .15s;
+    outline: none;
+  }
+  .field input:focus { border-color: var(--accent); background: #fff; }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 28px; text-align: center; cursor: pointer;
+    transition: all .2s; background: var(--surface2);
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: var(--accent-light); }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload-zone .icon { font-size: 28px; margin-bottom: 8px; }
+  .upload-zone p { font-size: 14px; color: var(--text-muted); }
+  .upload-zone strong { color: var(--accent); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 18px; border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
+    cursor: pointer; border: none; transition: all .15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-dark); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37,99,235,.3); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-ghost { background: transparent; color: var(--text-muted); border: 1.5px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-success:hover { opacity: .9; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  /* Student list */
+  .students-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px;
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 600;
+  }
+  .badge-blue { background: var(--accent-light); color: var(--accent); }
+  .badge-green { background: var(--success-bg); color: var(--success); }
+
+  .student-grid { display: flex; flex-direction: column; gap: 8px; }
+
+  .student-row {
+    display: grid; grid-template-columns: 32px 1fr auto auto;
+    align-items: center; gap: 12px;
+    padding: 12px 16px; border-radius: var(--radius-sm);
+    background: var(--surface2); border: 1.5px solid var(--border);
+    transition: border-color .15s;
+  }
+  .student-row.done { border-color: #a7f3d0; background: #f0fdf9; }
+  .student-row.processing { border-color: #bfdbfe; background: #eff6ff; }
+  .student-row.error { border-color: #fca5a5; background: #fff5f5; }
+
+  .student-num {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--border); display: grid; place-items: center;
+    font-size: 11px; font-weight: 700; color: var(--text-muted);
+  }
+  .student-name { font-size: 14px; font-weight: 500; }
+  .student-status { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+  .student-status.ok { color: var(--success); }
+  .student-status.err { color: var(--error); }
+  .student-status.proc { color: var(--accent); }
+
+  .upload-btn-small {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 11px; border-radius: 7px; font-size: 12px;
+    font-weight: 600; cursor: pointer; transition: all .15s;
+    border: 1.5px solid var(--border); background: #fff;
+    color: var(--text); white-space: nowrap;
+  }
+  .upload-btn-small:hover { border-color: var(--accent); color: var(--accent); }
+  .upload-btn-small.has-file { border-color: var(--success); color: var(--success); background: var(--success-bg); }
+  .upload-btn-small input { display: none; }
+
+  /* Answers preview */
+  .answers-chip {
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    color: var(--success); background: var(--success-bg);
+    padding: 3px 8px; border-radius: 6px; white-space: nowrap;
+  }
+  .answers-chip.error { color: var(--error); background: var(--error-bg); }
+
+  /* Process bar */
+  .progress-wrap { margin: 16px 0; display: none; }
+  .progress-wrap.show { display: block; }
+  .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .progress-bar { height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width .3s; }
+
+  /* Results table */
+  .results-section { display: none; }
+  .results-section.show { display: block; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: var(--surface2); }
+  th {
+    padding: 10px 12px; text-align: left; font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted);
+    border-bottom: 2px solid var(--border); white-space: nowrap;
+  }
+  td {
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
+    font-family: 'DM Mono', monospace; font-size: 13px;
+  }
+  td.name-cell { font-family: 'DM Sans', sans-serif; font-weight: 500; font-size: 14px; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  .answer-cell { text-align: center; }
+  .answer-pill {
+    display: inline-block; width: 22px; height: 22px; line-height: 22px;
+    border-radius: 6px; text-align: center; font-weight: 700; font-size: 12px;
+  }
+  .answer-pill.filled { background: var(--accent); color: #fff; }
+  .answer-pill.empty { color: var(--border); }
+
+  /* Actions row */
+  .actions-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 14px; height: 14px; border: 2px solid rgba(37,99,235,.2);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 20px; right: 20px;
+    background: var(--text); color: #fff;
+    padding: 12px 20px; border-radius: 10px;
+    font-size: 14px; font-weight: 500;
+    box-shadow: var(--shadow-lg);
+    transform: translateY(60px); opacity: 0;
+    transition: all .3s; z-index: 999;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--error); }
+
+  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+  .text-muted { color: var(--text-muted); font-size: 13px; }
+  .flex { display: flex; } .gap-2 { gap: 8px; } .items-center { align-items: center; }
+  .mt-2 { margin-top: 8px; } .mt-3 { margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-icon">📋</div>
+    <div>
+      <h1>Lector de Hojas de Respuesta</h1>
+      <p>Sube la lista de estudiantes, agrega las imágenes y descarga el Excel</p>
+    </div>
+  </div>
+
+  <!-- Step 1: Config -->
+  <div class="card">
+    <div class="card-title">⚙️ Configuración</div>
+    <div class="config-row">
+      <div class="field" style="flex:2">
+        <label>URL de la API</label>
+        <input type="url" id="apiUrl" placeholder="https://tu-api.up.railway.app/scan" />
+      </div>
+      <div class="field">
+        <label>Pregunta inicial</label>
+        <input type="number" id="qStart" value="1" min="1" max="200" />
+      </div>
+      <div class="field">
+        <label>Pregunta final</label>
+        <input type="number" id="qEnd" value="20" min="1" max="200" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Upload student list -->
+  <div class="card">
+    <div class="card-title">👥 Lista de Estudiantes</div>
+    <div class="upload-zone" id="csvZone">
+      <input type="file" id="csvInput" accept=".csv,.txt" onchange="handleCSV(this)">
+      <div class="icon">📄</div>
+      <p><strong>Arrastra un CSV</strong> o haz clic para seleccionar</p>
+      <p style="font-size:12px;margin-top:4px;">Una columna con nombres. Ej: <code>Juan Pérez</code></p>
+    </div>
+    <div class="divider"></div>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:200px;margin-bottom:0">
+        <label>O agregar manualmente</label>
+        <input type="text" id="manualName" placeholder="Nombre del estudiante" onkeydown="if(event.key==='Enter')addStudent()">
+      </div>
+      <button class="btn btn-ghost" onclick="addStudent()">+ Agregar</button>
+      <button class="btn btn-ghost" onclick="clearStudents()" style="margin-left:auto">🗑 Limpiar lista</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Student list + image upload -->
+  <div class="card" id="studentsCard" style="display:none">
+    <div class="students-header">
+      <div class="card-title" style="margin:0">📝 Estudiantes</div>
+      <span class="badge badge-blue" id="studentCount">0 estudiantes</span>
+    </div>
+    <div class="student-grid" id="studentList"></div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label">
+        <span id="progressText">Procesando...</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    </div>
+
+    <div class="actions-row mt-3">
+      <button class="btn btn-primary" id="processBtn" onclick="processAll()">
+        ▶ Procesar todas las imágenes
+      </button>
+      <span class="text-muted" id="readyCount" style="align-self:center"></span>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="card results-section" id="resultsSection">
+    <div class="students-header">
+      <div class="card-title" style="margin:0">📊 Resultados</div>
+      <span class="badge badge-green" id="resultsCount"></span>
+    </div>
+    <div class="table-wrap">
+      <table id="resultsTable">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div class="actions-row mt-3">
+      <button class="btn btn-success" onclick="downloadExcel()">⬇ Descargar Excel</button>
+      <button class="btn btn-ghost" onclick="resetAll()">↩ Nueva sesión</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const students = [];   // { id, name, file, status, answers, error }
+let processing = false;
+
+// ── CSV Parsing ────────────────────────────────────────────────────────────
+function handleCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    lines.forEach(line => {
+      // Support "id,name" or just "name"
+      const parts = line.split(',');
+      const name = parts.length > 1 ? parts.slice(1).join(',').trim() : parts[0].trim();
+      if (name && name.toLowerCase() !== 'nombre' && name.toLowerCase() !== 'name') {
+        pushStudent(name);
+      }
+    });
+    renderStudents();
+    toast(`✅ ${lines.length} estudiantes cargados`, 'success');
+  };
+  reader.readAsText(file);
+}
+
+function addStudent() {
+  const input = document.getElementById('manualName');
+  const name = input.value.trim();
+  if (!name) return;
+  pushStudent(name);
+  renderStudents();
+  input.value = '';
+  input.focus();
+}
+
+function pushStudent(name) {
+  students.push({ id: students.length + 1, name, file: null, status: 'pending', answers: null, error: null });
+}
+
+function clearStudents() {
+  if (!confirm('¿Limpiar toda la lista?')) return;
+  students.length = 0;
+  renderStudents();
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderStudents() {
+  const card = document.getElementById('studentsCard');
+  const list = document.getElementById('studentList');
+  const count = document.getElementById('studentCount');
+  const readyCount = document.getElementById('readyCount');
+
+  if (students.length === 0) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  count.textContent = `${students.length} estudiantes`;
+
+  list.innerHTML = students.map((s, i) => {
+    const statusHtml = statusBadge(s);
+    const answerPreview = s.answers
+      ? `<span class="answers-chip">${Object.keys(s.answers).length} resp. detectadas</span>`
+      : s.error
+        ? `<span class="answers-chip error">Error</span>`
+        : '';
+
+    return `
+      <div class="student-row ${s.status}" id="row-${i}">
+        <div class="student-num">${s.id}</div>
+        <div>
+          <div class="student-name">${s.name}</div>
+          <div style="margin-top:3px;">${answerPreview}</div>
+        </div>
+        <div>${statusHtml}</div>
+        <label class="upload-btn-small ${s.file ? 'has-file' : ''}">
+          <input type="file" accept="image/*" onchange="attachFile(${i}, this)">
+          ${s.file ? '✓ ' + truncate(s.file.name, 14) : '📷 Subir imagen'}
+        </label>
+      </div>`;
+  }).join('');
+
+  const ready = students.filter(s => s.file).length;
+  readyCount.textContent = ready > 0 ? `${ready} de ${students.length} con imagen` : '';
+  document.getElementById('processBtn').disabled = ready === 0 || processing;
+}
+
+function statusBadge(s) {
+  if (s.status === 'done') return `<span class="student-status ok">✓ Listo</span>`;
+  if (s.status === 'processing') return `<span class="student-status proc"><div class="spinner"></div> Procesando</span>`;
+  if (s.status === 'error') return `<span class="student-status err">✗ Error</span>`;
+  return `<span class="student-status">${s.file ? '⏳ En cola' : '— Sin imagen'}</span>`;
+}
+
+function attachFile(i, input) {
+  if (!input.files[0]) return;
+  students[i].file = input.files[0];
+  students[i].status = 'pending';
+  students[i].answers = null;
+  students[i].error = null;
+  renderStudents();
+}
+
+function truncate(str, n) { return str.length > n ? str.slice(0, n) + '…' : str; }
+
+// ── Process ────────────────────────────────────────────────────────────────
+async function processAll() {
+  const apiUrl = document.getElementById('apiUrl').value.trim();
+  if (!apiUrl) { toast('⚠️ Ingresa la URL de la API primero', 'error'); return; }
+
+  const qStart = document.getElementById('qStart').value;
+  const qEnd = document.getElementById('qEnd').value;
+  const withImages = students.filter(s => s.file);
+  if (withImages.length === 0) { toast('⚠️ Ningún estudiante tiene imagen asignada', 'error'); return; }
+
+  processing = true;
+  document.getElementById('processBtn').disabled = true;
+
+  const progressWrap = document.getElementById('progressWrap');
+  progressWrap.classList.add('show');
+
+  let done = 0;
+  for (const s of withImages) {
+    s.status = 'processing';
+    renderStudents();
+    updateProgress(done, withImages.length, `Procesando: ${s.name}`);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', s.file);
+
+      const url = `${apiUrl}?start=${qStart}&end=${qEnd}`;
+      const res = await fetch(url, { method: 'POST', body: formData });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Respuesta inválida');
+
+      s.answers = data.answers;
+      s.status = 'done';
+    } catch (err) {
+      s.error = err.message;
+      s.status = 'error';
+    }
+
+    done++;
+    updateProgress(done, withImages.length, `Procesado: ${s.name}`);
+    renderStudents();
+    await sleep(200);
+  }
+
+  processing = false;
+  progressWrap.classList.remove('show');
+  renderStudents();
+  buildResultsTable();
+  toast(`✅ Procesados ${done} estudiantes`, 'success');
+}
+
+function updateProgress(done, total, label) {
+  const pct = Math.round((done / total) * 100);
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = label;
+  document.getElementById('progressPct').textContent = pct + '%';
+}
+
+// ── Results Table ──────────────────────────────────────────────────────────
+function buildResultsTable() {
+  const qStart = parseInt(document.getElementById('qStart').value);
+  const qEnd   = parseInt(document.getElementById('qEnd').value);
+  const qs = Array.from({ length: qEnd - qStart + 1 }, (_, i) => qStart + i);
+
+  const processed = students.filter(s => s.status === 'done' || s.status === 'error');
+  if (processed.length === 0) return;
+
+  // Build header
+  const head = document.getElementById('tableHead');
+  head.innerHTML = `<tr>
+    <th>#</th>
+    <th>Estudiante</th>
+    ${qs.map(q => `<th class="answer-cell">P${q}</th>`).join('')}
+  </tr>`;
+
+  // Build rows
+  const body = document.getElementById('tableBody');
+  body.innerHTML = processed.map((s, i) => {
+    const cells = qs.map(q => {
+      const ans = s.answers?.[String(q)] ?? null;
+      return `<td class="answer-cell">
+        <span class="answer-pill ${ans ? 'filled' : 'empty'}">${ans ?? '—'}</span>
+      </td>`;
+    }).join('');
+    return `<tr><td>${i + 1}</td><td class="name-cell">${s.name}</td>${cells}</tr>`;
+  }).join('');
+
+  const section = document.getElementById('resultsSection');
+  section.classList.add('show');
+  document.getElementById('resultsCount').textContent = `${processed.length} procesados`;
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Excel Export ───────────────────────────────────────────────────────────
+function downloadExcel() {
+  const qStart = parseInt(document.getElementById('qStart').value);
+  const qEnd   = parseInt(document.getElementById('qEnd').value);
+  const qs = Array.from({ length: qEnd - qStart + 1 }, (_, i) => qStart + i);
+
+  const headers = ['#', 'Estudiante', ...qs.map(q => `P${q}`)];
+  const rows = students
+    .filter(s => s.status === 'done' || s.status === 'error')
+    .map((s, i) => [
+      i + 1,
+      s.name,
+      ...qs.map(q => s.answers?.[String(q)] ?? '')
+    ]);
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+  // Column widths
+  ws['!cols'] = [{ wch: 4 }, { wch: 28 }, ...qs.map(() => ({ wch: 5 }))];
+
+  // Header style (basic)
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const cell = ws[XLSX.utils.encode_cell({ r: 0, c })];
+    if (cell) cell.s = { font: { bold: true }, fill: { fgColor: { rgb: 'EFF4FF' } } };
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Respuestas');
+  const now = new Date();
+  const date = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  XLSX.writeFile(wb, `respuestas_${date}.xlsx`);
+  toast('📥 Excel descargado', 'success');
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function resetAll() {
+  if (!confirm('¿Comenzar una nueva sesión? Se perderán los resultados actuales.')) return;
+  students.length = 0;
+  document.getElementById('resultsSection').classList.remove('show');
+  renderStudents();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+let toastTimer;
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = 'toast', 3000);
+}
+
+// Drag-and-drop CSV
+const csvZone = document.getElementById('csvZone');
+csvZone.addEventListener('dragover', e => { e.preventDefault(); csvZone.classList.add('drag'); });
+csvZone.addEventListener('dragleave', () => csvZone.classList.remove('drag'));
+csvZone.addEventListener('drop', e => {
+  e.preventDefault(); csvZone.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) { const dt = new DataTransfer(); dt.items.add(file); document.getElementById('csvInput').files = dt.files; handleCSV(document.getElementById('csvInput')); }
+});
+</script>
+</body>
+</html>
